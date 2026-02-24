@@ -11,6 +11,7 @@ import SubmittedPage from './pages/SubmittedPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
 import AdminReviewPage from './pages/AdminReviewPage';
 import { B, font } from './theme';
+import CommentWidget from './components/CommentWidget';
 
 // Wrapper component so useAdmin is only called when admin routes render
 function AdminRoutes({ user }) {
@@ -61,6 +62,7 @@ export default function App() {
   // If regular user routes requested and user not authenticated, show public form
 
   return (
+    <>
     <Routes>
       {/* ── Public form wizard (default for unauthenticated users) ── */}
       <Route path="/" element={
@@ -125,5 +127,9 @@ export default function App() {
       {/* ── Catch-all ── */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+
+    {/* Comment Widget — always visible */}
+    <CommentWidget appId="intake" />
+  </>
   );
 }
