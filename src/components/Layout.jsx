@@ -21,17 +21,18 @@ export default function Layout({ children, user, onSignOut, isAdmin, isPublic })
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      {/* Header */}
+      {/* Header — frosted glass */}
       <header style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: '0 24px',
         height: 56,
-        background: B.glassStrong,
-        backdropFilter: B.blurSm,
-        WebkitBackdropFilter: B.blurSm,
-        borderBottom: `1px solid ${B.glassBorder}`,
+        background: 'rgba(255,255,255,0.45)',
+        backdropFilter: B.blurLg,
+        WebkitBackdropFilter: B.blurLg,
+        borderBottom: '1px solid rgba(255,255,255,0.60)',
+        boxShadow: '0 4px 24px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.8)',
         position: 'sticky',
         top: 0,
         zIndex: 100,
