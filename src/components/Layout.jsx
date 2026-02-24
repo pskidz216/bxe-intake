@@ -26,8 +26,11 @@ export default function Layout({ children, user, onSignOut, isAdmin, isPublic })
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '0 24px',
-        height: 56,
+        padding: '0 clamp(12px, 3vw, 24px)',
+        height: 'auto',
+        minHeight: 56,
+        flexWrap: 'wrap',
+        gap: 8,
         background: 'rgba(255,255,255,0.45)',
         backdropFilter: B.blurLg,
         WebkitBackdropFilter: B.blurLg,
@@ -58,6 +61,8 @@ export default function Layout({ children, user, onSignOut, isAdmin, isPublic })
                 style={navLinkStyle(isAdminRoute)}
                 onMouseEnter={e => { if (!isAdminRoute) e.currentTarget.style.background = B.orangeSofter; }}
                 onMouseLeave={e => { if (!isAdminRoute) e.currentTarget.style.background = 'transparent'; }}
+                onTouchStart={e => { if (!isAdminRoute) e.currentTarget.style.background = B.orangeSofter; }}
+                onTouchEnd={e => { const el = e.currentTarget; setTimeout(() => { if (!isAdminRoute) el.style.background = 'transparent'; }, 150); }}
               >
                 Admin Dashboard
               </Link>
@@ -66,6 +71,8 @@ export default function Layout({ children, user, onSignOut, isAdmin, isPublic })
                 style={navLinkStyle(!isAdminRoute && location.pathname.startsWith('/dashboard'))}
                 onMouseEnter={e => { if (isAdminRoute) e.currentTarget.style.background = B.orangeSofter; }}
                 onMouseLeave={e => { if (isAdminRoute) e.currentTarget.style.background = 'transparent'; }}
+                onTouchStart={e => { if (isAdminRoute) e.currentTarget.style.background = B.orangeSofter; }}
+                onTouchEnd={e => { const el = e.currentTarget; setTimeout(() => { if (isAdminRoute) el.style.background = 'transparent'; }, 150); }}
               >
                 My Applications
               </Link>
@@ -137,7 +144,7 @@ export default function Layout({ children, user, onSignOut, isAdmin, isPublic })
       </header>
 
       {/* Content */}
-      <main style={{ flex: 1, padding: 24 }}>
+      <main style={{ flex: 1, padding: 'clamp(12px, 3vw, 24px)' }}>
         {children}
       </main>
     </div>

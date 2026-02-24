@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { B, font, buttonPrimary, buttonSecondary } from '../theme';
 import SectionNav from '../components/SectionNav';
@@ -31,12 +31,24 @@ const SECTION_COMPONENTS = {
   summary: SummarySection,
 };
 
+function useIsMobile(breakpoint = 768) {
+  const [m, setM] = useState(typeof window !== 'undefined' && window.innerWidth <= breakpoint);
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
+    const h = (e) => setM(e.matches);
+    mq.addEventListener('change', h);
+    return () => mq.removeEventListener('change', h);
+  }, [breakpoint]);
+  return m;
+}
+
 export default function ApplicationPage({ appHook, user }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const { currentApp, sections, loading, loadApplication, updateCurrentSection, submitApplication } = appHook;
   const [activeSection, setActiveSection] = useState('company');
   const { isExpired } = useDeadline(currentApp?.expires_at);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     if (id) loadApplication(id);
@@ -91,16 +103,17 @@ export default function ApplicationPage({ appHook, user }) {
   const isReadOnly = isExpired || currentApp.status === 'submitted' || currentApp.status === 'disqualified';
 
   return (
-    <div style={{ display: 'flex', minHeight: 'calc(100vh - 80px)', gap: 0 }}>
+    <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', minHeight: 'calc(100vh - 80px)', gap: 0 }}>
       {/* Sidebar */}
       <SectionNav
         sections={sections}
         currentSection={activeSection}
         onSelect={handleSectionSelect}
+        isMobile={isMobile}
       />
 
       {/* Main content */}
-      <div style={{ flex: 1, padding: '20px 32px', overflowY: 'auto' }}>
+      <div style={{ flex: 1, padding: isMobile ? '16px' : '20px 32px', overflowY: 'auto' }}>
         {/* Deadline banner */}
         <div style={{ marginBottom: 16 }}>
           <DeadlineBanner expiresAt={currentApp.expires_at} />

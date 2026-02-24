@@ -1,7 +1,7 @@
 import { B, font } from '../theme';
 import { SECTIONS, STATUS_DISPLAY } from '../utils/constants';
 
-export default function SectionNav({ sections, currentSection, onSelect }) {
+export default function SectionNav({ sections, currentSection, onSelect, isMobile }) {
   const getStatusForKey = (key) => {
     const s = sections.find(sec => sec.section_key === key);
     return s ? s.status : 'not_started';
@@ -10,6 +10,57 @@ export default function SectionNav({ sections, currentSection, onSelect }) {
   const completedCount = sections.filter(s =>
     s.status === 'submitted' || s.status === 'accepted'
   ).length;
+
+  if (isMobile) {
+    return (
+      <nav style={{
+        width: '100%',
+        padding: '10px 12px',
+        borderBottom: `1px solid ${B.border}`,
+        overflowX: 'auto',
+        WebkitOverflowScrolling: 'touch',
+        display: 'flex',
+        gap: 6,
+        flexShrink: 0,
+        background: 'rgba(255,255,255,0.30)',
+        backdropFilter: B.blurSm,
+        WebkitBackdropFilter: B.blurSm,
+      }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 4,
+          padding: '6px 10px', borderRadius: 16,
+          background: B.orangeSoft, whiteSpace: 'nowrap',
+          fontSize: 10, fontWeight: 700, color: B.orange,
+          flexShrink: 0, fontFamily: font,
+        }}>
+          {completedCount}/{SECTIONS.length}
+        </div>
+        {SECTIONS.map(sec => {
+          const status = getStatusForKey(sec.key);
+          const isActive = currentSection === sec.key;
+          const isDone = status === 'submitted' || status === 'accepted';
+          return (
+            <button
+              key={sec.key}
+              onClick={() => onSelect(sec.key)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 4,
+                padding: '6px 12px', borderRadius: 16,
+                border: 'none', whiteSpace: 'nowrap', flexShrink: 0,
+                background: isActive ? B.orangeSoft : 'rgba(255,255,255,0.50)',
+                color: isActive ? B.orange : isDone ? B.green : B.textSecondary,
+                fontSize: 11, fontWeight: isActive ? 700 : 500,
+                cursor: 'pointer', fontFamily: font,
+                transition: 'background 0.15s',
+              }}
+            >
+              {isDone ? '\u2713' : sec.number}. {sec.label}
+            </button>
+          );
+        })}
+      </nav>
+    );
+  }
 
   return (
     <nav style={{
