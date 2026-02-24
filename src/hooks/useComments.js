@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 export function useComments(appId) {
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   // Fetch comments for this app
   const fetchComments = useCallback(async () => {
@@ -22,6 +23,25 @@ export function useComments(appId) {
 
   useEffect(() => {
     fetchComments();
+  }, [fetchComments]);
+
+  // Re-fetch when SSO session arrives (tokens come async via hash/postMessage)
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        setIsAuthenticated(true);
+        fetchComments();
+      } else if (event === 'SIGNED_OUT') {
+        setIsAuthenticated(false);
+      }
+    });
+
+    // Check initial auth state
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setIsAuthenticated(!!user);
+    });
+
+    return () => subscription.unsubscribe();
   }, [fetchComments]);
 
   // Add a comment
@@ -88,6 +108,7 @@ export function useComments(appId) {
   return {
     comments,
     loading,
+    isAuthenticated,
     addComment,
     toggleResolved,
     deleteComment,

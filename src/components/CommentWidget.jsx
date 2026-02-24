@@ -16,13 +16,14 @@ function timeAgo(dateStr) {
 }
 
 export default function CommentWidget({ appId }) {
-  const { comments, loading, addComment, toggleResolved, deleteComment, openCount } = useComments(appId);
+  const { comments, loading, isAuthenticated, addComment, toggleResolved, deleteComment, openCount } = useComments(appId);
   const [isOpen, setIsOpen] = useState(false);
   const [tab, setTab] = useState('open');
   const [showForm, setShowForm] = useState(false);
   const [text, setText] = useState('');
   const [context, setContext] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [authError, setAuthError] = useState(false);
   const panelRef = useRef(null);
   const textRef = useRef(null);
 
@@ -37,6 +38,7 @@ export default function CommentWidget({ appId }) {
 
   const handleSubmit = async () => {
     if (!text.trim()) return;
+    setAuthError(false);
     setSubmitting(true);
     const ok = await addComment(text.trim(), context.trim());
     if (ok) {
@@ -44,6 +46,8 @@ export default function CommentWidget({ appId }) {
       setContext('');
       setShowForm(false);
       setTab('open');
+    } else {
+      setAuthError(true);
     }
     setSubmitting(false);
   };
@@ -135,22 +139,28 @@ export default function CommentWidget({ appId }) {
           <span style={{ fontSize: 18 }}>{'\uD83D\uDCAC'}</span>
           <span style={{ fontSize: 15, fontWeight: 700, color: '#1F2937' }}>Comments</span>
         </div>
-        <button
-          onClick={() => { setShowForm(true); setTab('open'); }}
-          style={{
-            padding: '6px 14px',
-            borderRadius: 8,
-            border: 'none',
-            background: ORANGE,
-            color: '#fff',
-            fontSize: 12,
-            fontWeight: 600,
-            cursor: 'pointer',
-            fontFamily: FONT,
-          }}
-        >
-          + Add
-        </button>
+        {isAuthenticated ? (
+          <button
+            onClick={() => { setShowForm(true); setTab('open'); setAuthError(false); }}
+            style={{
+              padding: '6px 14px',
+              borderRadius: 8,
+              border: 'none',
+              background: ORANGE,
+              color: '#fff',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer',
+              fontFamily: FONT,
+            }}
+          >
+            + Add
+          </button>
+        ) : (
+          <span style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 500 }}>
+            Sign in to comment
+          </span>
+        )}
       </div>
 
       {/* Tabs */}
@@ -260,6 +270,15 @@ export default function CommentWidget({ appId }) {
               {submitting ? 'Saving...' : 'Save'}
             </button>
           </div>
+          {authError && (
+            <div style={{
+              fontSize: 12, color: '#EF4444', marginTop: 6,
+              padding: '6px 10px', background: 'rgba(239,68,68,0.08)',
+              borderRadius: 6, border: '1px solid rgba(239,68,68,0.15)',
+            }}>
+              Sign in to add comments
+            </div>
+          )}
           <div style={{ fontSize: 10, color: '#9CA3AF', marginTop: 6 }}>
             Tip: Cmd+Enter to save quickly
           </div>
