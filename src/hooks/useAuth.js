@@ -14,6 +14,20 @@ export function useAuth() {
   const [mfaQrUri, setMfaQrUri] = useState(null);
   const [mfaEnrolling, setMfaEnrolling] = useState(false);
 
+  // Listen for portal SSO session via postMessage
+  useEffect(() => {
+    const handleMessage = async (event) => {
+      if (event.data?.type === 'BXE_PORTAL_SESSION') {
+        const { access_token, refresh_token } = event.data;
+        if (access_token && refresh_token) {
+          await supabase.auth.setSession({ access_token, refresh_token });
+        }
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
   // Restore session on mount
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
