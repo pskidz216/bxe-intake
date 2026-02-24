@@ -14,6 +14,9 @@ export function useAuth() {
   const [mfaQrUri, setMfaQrUri] = useState(null);
   const [mfaEnrolling, setMfaEnrolling] = useState(false);
 
+  // Detect if we're inside the portal iframe
+  const isInIframe = window.parent !== window;
+
   // Listen for portal SSO session via postMessage
   useEffect(() => {
     const handleMessage = async (event) => {
@@ -31,7 +34,7 @@ export function useAuth() {
     window.addEventListener('message', handleMessage);
 
     // Tell the parent portal we're ready to receive the session
-    if (window.parent !== window) {
+    if (isInIframe) {
       window.parent.postMessage({ type: 'BXE_APP_READY' }, '*');
     }
 
@@ -43,7 +46,12 @@ export function useAuth() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
-      setLoading(false);
+      // If in iframe with no local session, wait for portal SSO before showing login
+      if (!session && isInIframe) {
+        setTimeout(() => setLoading(false), 2000);
+      } else {
+        setLoading(false);
+      }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
