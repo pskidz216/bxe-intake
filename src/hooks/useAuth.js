@@ -17,8 +17,24 @@ export function useAuth() {
   // Detect if we're inside the portal iframe
   const isInIframe = window.parent !== window;
 
-  // Listen for portal SSO session via postMessage
+  // Portal SSO: check URL hash for tokens (primary) + postMessage (fallback)
   useEffect(() => {
+    // Check URL hash for portal SSO tokens
+    const hash = window.location.hash;
+    if (hash && hash.includes('portal_access_token')) {
+      const params = new URLSearchParams(hash.substring(1));
+      const access_token = params.get('portal_access_token');
+      const refresh_token = params.get('portal_refresh_token');
+      if (access_token && refresh_token) {
+        // Clear the hash so tokens aren't visible
+        window.history.replaceState(null, '', window.location.pathname);
+        supabase.auth.setSession({ access_token, refresh_token }).catch(e =>
+          console.warn('SSO setSession from URL failed:', e)
+        );
+      }
+    }
+
+    // Also listen for postMessage as a fallback
     const handleMessage = async (event) => {
       if (event.data?.type === 'BXE_PORTAL_SESSION') {
         const { access_token, refresh_token } = event.data;
@@ -43,16 +59,20 @@ export function useAuth() {
 
   // Restore session on mount
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      // If in iframe with no local session, wait for portal SSO before showing login
-      if (!session && isInIframe) {
-        setTimeout(() => setLoading(false), 2000);
-      } else {
-        setLoading(false);
-      }
-    });
+    // If in iframe, give URL hash SSO a moment to process first
+    const delay = isInIframe ? 500 : 0;
+    setTimeout(() => {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        if (!session && isInIframe) {
+          // Still no session — wait a bit more for postMessage fallback
+          setTimeout(() => setLoading(false), 1500);
+        } else {
+          setLoading(false);
+        }
+      });
+    }, delay);
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
