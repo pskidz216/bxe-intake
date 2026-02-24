@@ -20,11 +20,21 @@ export function useAuth() {
       if (event.data?.type === 'BXE_PORTAL_SESSION') {
         const { access_token, refresh_token } = event.data;
         if (access_token && refresh_token) {
-          await supabase.auth.setSession({ access_token, refresh_token });
+          try {
+            await supabase.auth.setSession({ access_token, refresh_token });
+          } catch (e) {
+            console.warn('SSO setSession failed:', e);
+          }
         }
       }
     };
     window.addEventListener('message', handleMessage);
+
+    // Tell the parent portal we're ready to receive the session
+    if (window.parent !== window) {
+      window.parent.postMessage({ type: 'BXE_APP_READY' }, '*');
+    }
+
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 
