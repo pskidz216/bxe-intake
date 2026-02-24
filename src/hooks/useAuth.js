@@ -17,24 +17,19 @@ export function useAuth() {
   // Detect if we're inside the portal iframe
   const isInIframe = window.parent !== window;
 
-  // Portal SSO: check URL hash for tokens (primary) + postMessage (fallback)
+  // Single coordinated auth init: listener first, then hash check, then fallbacks
   useEffect(() => {
-    // Check URL hash for portal SSO tokens
-    const hash = window.location.hash;
-    if (hash && hash.includes('portal_access_token')) {
-      const params = new URLSearchParams(hash.substring(1));
-      const access_token = params.get('portal_access_token');
-      const refresh_token = params.get('portal_refresh_token');
-      if (access_token && refresh_token) {
-        // Clear the hash so tokens aren't visible
-        window.history.replaceState(null, '', window.location.pathname);
-        supabase.auth.setSession({ access_token, refresh_token }).catch(e =>
-          console.warn('SSO setSession from URL failed:', e)
-        );
-      }
-    }
+    let cancelled = false;
 
-    // Also listen for postMessage as a fallback
+    // 1. Set up auth state change listener FIRST so we never miss events
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, sess) => {
+      if (cancelled) return;
+      setSession(sess);
+      setUser(sess?.user ?? null);
+      setLoading(false);
+    });
+
+    // 2. PostMessage listener for portal SSO fallback
     const handleMessage = async (event) => {
       if (event.data?.type === 'BXE_PORTAL_SESSION') {
         const { access_token, refresh_token } = event.data;
@@ -49,38 +44,51 @@ export function useAuth() {
     };
     window.addEventListener('message', handleMessage);
 
-    // Tell the parent portal we're ready to receive the session
     if (isInIframe) {
       window.parent.postMessage({ type: 'BXE_APP_READY' }, '*');
     }
 
-    return () => window.removeEventListener('message', handleMessage);
-  }, []);
-
-  // Restore session on mount
-  useEffect(() => {
-    // If in iframe, give URL hash SSO a moment to process first
-    const delay = isInIframe ? 500 : 0;
-    setTimeout(() => {
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        if (!session && isInIframe) {
-          // Still no session — wait a bit more for postMessage fallback
-          setTimeout(() => setLoading(false), 1500);
-        } else {
-          setLoading(false);
+    // 3. Initialize: check hash tokens (await!), then fall back to getSession
+    const init = async () => {
+      const hash = window.location.hash;
+      if (hash && hash.includes('portal_access_token')) {
+        const params = new URLSearchParams(hash.substring(1));
+        const access_token = params.get('portal_access_token');
+        const refresh_token = params.get('portal_refresh_token');
+        if (access_token && refresh_token) {
+          window.history.replaceState(null, '', window.location.pathname);
+          try {
+            const { error } = await supabase.auth.setSession({ access_token, refresh_token });
+            if (!error) return; // onAuthStateChange handles the rest
+          } catch (e) {
+            console.warn('SSO setSession from URL failed:', e);
+          }
         }
-      });
-    }, delay);
+      }
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+      // No hash tokens or they failed — check existing session
+      const { data: { session: existing } } = await supabase.auth.getSession();
+      if (cancelled) return;
 
-    return () => subscription.unsubscribe();
+      if (existing) {
+        setSession(existing);
+        setUser(existing.user);
+        setLoading(false);
+      } else if (isInIframe) {
+        // Give postMessage fallback a short window
+        setTimeout(() => { if (!cancelled) setLoading(false); }, 2000);
+      } else {
+        setLoading(false);
+      }
+    };
+
+    init();
+
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+      window.removeEventListener('message', handleMessage);
+    };
   }, []);
 
   // Check if user has MFA enrolled
