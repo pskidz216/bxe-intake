@@ -1,0 +1,5 @@
+# Dev-Bot Configuration
+# Controls the auto-builder triggered by the `dev-ready` label
+
+enabled: true
+branch_prefix: feature

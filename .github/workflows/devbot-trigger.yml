@@ -1,0 +1,184 @@
+name: Dev-Bot Auto-Builder
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  validate-and-build:
+    if: github.event.label.name == 'dev-ready'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Read devbot config
+        id: config
+        run: |
+          if [ -f .github/devbot.yml ]; then
+            ENABLED=$(grep 'enabled:' .github/devbot.yml | awk '{print $2}')
+            BRANCH_PREFIX=$(grep 'branch_prefix:' .github/devbot.yml | awk '{print $2}')
+          else
+            ENABLED="true"
+            BRANCH_PREFIX="feature"
+          fi
+          echo "enabled=$ENABLED" >> $GITHUB_OUTPUT
+          echo "branch_prefix=${BRANCH_PREFIX:-feature}" >> $GITHUB_OUTPUT
+
+      - name: Skip if disabled
+        if: steps.config.outputs.enabled == 'false'
+        run: |
+          echo "Dev-bot is disabled for this repo via .github/devbot.yml"
+          exit 0
+
+      - name: Validate issue has spec
+        id: validate
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Check issue body is not empty and has acceptance criteria
+          if [ -z "$ISSUE_BODY" ]; then
+            echo "valid=false" >> $GITHUB_OUTPUT
+            echo "reason=Issue body is empty" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Check for acceptance criteria markers
+          if echo "$ISSUE_BODY" | grep -qiE '(acceptance criteria|checklist|\- \[ \]|## requirements|## spec)'; then
+            echo "valid=true" >> $GITHUB_OUTPUT
+          else
+            echo "valid=false" >> $GITHUB_OUTPUT
+            echo "reason=No acceptance criteria or spec found in issue body" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Label needs-spec if invalid
+        if: steps.validate.outputs.valid == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          gh issue edit $ISSUE_NUMBER --add-label "needs-spec" --remove-label "dev-ready"
+          gh issue comment $ISSUE_NUMBER --body "**Dev-Bot:** This issue needs a spec before I can build it. Please add acceptance criteria or a checklist, then re-add the \`dev-ready\` label.
+
+          **Missing:** ${{ steps.validate.outputs.reason }}"
+
+      - name: Create feature branch
+        if: steps.validate.outputs.valid == 'true'
+        id: branch
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          BRANCH_PREFIX: ${{ steps.config.outputs.branch_prefix }}
+        run: |
+          # Slugify the issue title
+          SLUG=$(echo "$ISSUE_TITLE" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//' | head -c 50)
+          BRANCH="${BRANCH_PREFIX}/${ISSUE_NUMBER}-${SLUG}"
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+
+          git checkout -b "$BRANCH"
+          git push -u origin "$BRANCH"
+
+      - name: Update issue status
+        if: steps.validate.outputs.valid == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          gh issue edit $ISSUE_NUMBER --add-label "in-progress" --remove-label "dev-ready"
+          gh issue comment $ISSUE_NUMBER --body "**Dev-Bot:** Starting build on branch \`${{ steps.branch.outputs.branch }}\`. I'll open a PR when done."
+
+      - name: Run Claude Code dev-bot
+        if: steps.validate.outputs.valid == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          BRANCH: ${{ steps.branch.outputs.branch }}
+        run: |
+          # Install Claude Code
+          npm install -g @anthropic-ai/claude-code
+
+          # Build the prompt from issue context
+          PROMPT="You are a dev-bot. Build this feature following TDD (tests first, then implementation).
+
+          ## Issue #${ISSUE_NUMBER}: ${ISSUE_TITLE}
+
+          ${ISSUE_BODY}
+
+          ## Instructions
+          1. Read CLAUDE.md for project-specific instructions
+          2. Write failing tests first (RED)
+          3. Implement minimum code to pass tests (GREEN)
+          4. Refactor (IMPROVE)
+          5. Run full verification: build, typecheck, lint, test
+          6. Commit with conventional commit format: feat|fix|refactor: description
+          7. All tests must pass before you stop
+
+          Do NOT open a PR — just commit and push to this branch."
+
+          # Run Claude Code in non-interactive mode
+          claude -p "$PROMPT" --allowedTools "Bash,Read,Write,Edit,Glob,Grep" --max-turns 50 || BUILD_FAILED=true
+
+          if [ "$BUILD_FAILED" = "true" ]; then
+            echo "build_status=failed" >> $GITHUB_ENV
+          else
+            echo "build_status=success" >> $GITHUB_ENV
+          fi
+
+      - name: Push changes
+        if: steps.validate.outputs.valid == 'true' && env.build_status == 'success'
+        run: |
+          git push origin ${{ steps.branch.outputs.branch }}
+
+      - name: Create PR on success
+        if: steps.validate.outputs.valid == 'true' && env.build_status == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          BRANCH: ${{ steps.branch.outputs.branch }}
+        run: |
+          gh pr create \
+            --title "$ISSUE_TITLE" \
+            --body "$(cat <<EOF
+          ## Summary
+          Auto-built by Dev-Bot from issue #${ISSUE_NUMBER}.
+
+          ## Changes
+          See commits on this branch for full diff.
+
+          ## Test Plan
+          - [ ] All tests pass (verified by dev-bot)
+          - [ ] Manual review of implementation
+          - [ ] Acceptance criteria from issue #${ISSUE_NUMBER} met
+
+          Closes #${ISSUE_NUMBER}
+
+          :robot: Built by Dev-Bot (Claude Code)
+          EOF
+          )" \
+            --base main \
+            --head "$BRANCH"
+
+          gh issue edit $ISSUE_NUMBER --add-label "in-review" --remove-label "in-progress"
+
+      - name: Handle build failure
+        if: steps.validate.outputs.valid == 'true' && env.build_status == 'failed'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          gh issue edit $ISSUE_NUMBER --add-label "build-failed" --remove-label "in-progress"
+          gh issue comment $ISSUE_NUMBER --body "**Dev-Bot:** Build failed after retries. Check the [Actions log](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.
+
+          Moving to blocked. Fix the spec or add more detail, then re-add \`dev-ready\` label to retry."
